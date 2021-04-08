@@ -21,11 +21,8 @@ library(ISLR)
 
 ```{r}
 data(Prostate)
-```
 
-### The lowest cross-validation error 
-
-```{r}
+# The lowest CV error 
 set.seed(1)
 
 ctrl = trainControl(method = "cv")
@@ -43,9 +40,9 @@ tree_fit_1$finalModel$cptable
 rpart.plot(tree_fit_1$finalModel)
 ```
 
-### The 1 SE rule
 
 ```{r}
+# 1 SE rule
 set.seed(1) 
 tree_fit_2 = train(lpsa~.,
                    data = Prostate,
@@ -65,18 +62,15 @@ The regression trees from lowest CV and 1 SE rule are different.
 
 The tree corresponding to the lowest cross-validation error has a size of 8, while the tree obtained with 1 SE rule has a size of 3
 
-## b) Choose one decision tree model
+## B. Choose the decision tree
 
 ```{r}
 resamp = resamples(list(lowest_cv_error = tree_fit_1, 
                          one_se = tree_fit_2
                          ))
+
 bwplot(resamp, metric = "RMSE")
-```
 
-I choosed tree size 3 as it has a similar performance with size 8 and it is simpler.
-
-```{r}
 rpart.plot(tree_fit_2$finalModel)
 ```
 
@@ -84,7 +78,7 @@ The regression tree with size of 3 is chosen:
 
 For the terminal node lcavol < 2.5, if log(cancer volumn) is smaller than 2.5, there is 78% of probability that log(prostate specific antigen) to be 2.1. If lcovol is not smaller than 2.5, there is 22% of probability that lpsa to be 3.8.
 
-## c) Bagging
+## C. Bagging
 
 ```{r}
 set.seed(1)
@@ -108,7 +102,7 @@ barplot(sort(ranger::importance(bag_fit$finalModel), decreasing = FALSE),
 Variable Importance:
 lcavol > lweight > svi > pgg45  > lcp > age > lbph > gleason
 
-## d) Random Forests
+## D. Random Forests
 
 ```{r}
 set.seed(1)
@@ -131,7 +125,7 @@ barplot(sort(ranger::importance(rf_fit$finalModel), decreasing = FALSE),
 Variable Importance:
 lcavol  > lweight > svi > lcp > pgg45 > age > lbph > gleason
 
-## e) Boosting 
+## E. Boosting 
 
 ```{r}
 set.seed(1)
@@ -153,11 +147,10 @@ ggplot(gbm_fit, highlight = TRUE)
 summary(gbm_fit$finalModel, las = 2, cBars = 19, cex.names = 0.6)
 ```
 
-
 Variable Importance:
 lcavol > lweight > svi > lcp > pgg45 > age > lbph > gleason
 
-## f) Compare Models
+## F. Comparisons
 
 ```{r}
 resamp_2 = resamples(list(tree_fit = tree_fit_1, 
@@ -172,3 +165,69 @@ ggplot(resamp_2, metric = "RMSE")
 ```
 
 Boosting, random forests and bagging have similar RMSE mean and median. However, random forests has the largest mean R-squared value. Therefore, random forests is chosen to predict PSA level.
+
+# Problem 2
+
+## A. Decision Tree
+
+```{r}
+set.seed(1)
+trainindex = sample(seq_len(nrow(OJ)), size = 800)
+train = OJ[trainindex, ]
+test = OJ[-trainindex, ]
+
+ctrl2 = trainControl(method = "repeatedcv", summaryFunction = twoClassSummary, classProbs = TRUE)
+
+rpart_fit_c = train(Purchase~.,
+                    data = train,
+                    method = "rpart",
+                    tuneGrid = data.frame(cp = exp(seq(-15,0, by = 2))),
+                    trControl = ctrl2,
+                    metric = "ROC")
+
+plot(rpart_fit_c, xTrans = function(x)log(x), xlab = "log(cp)")
+ggplot(rpart_fit_c, highlight = TRUE)
+
+rpart_fit_c$bestTune
+rpart_fit_c$finalModel$cptable
+
+rpart.plot(rpart_fit_c$finalModel) # final tree
+
+tree.pred = predict(rpart_fit_c, newdata = test, type = "raw")
+1 - sum(tree.pred == test$Purchase) / length(test$Purchase)
+```
+
+The final tree has a size of 20. The test classification error rate is 17.40741%.
+
+## B. Random forests
+
+```{r}
+set.seed(1)
+
+rf.grid2 = expand.grid(mtry = 2:7,
+                       splitrule = "gini",
+                       min.node.size = seq(20,120, by = 10))
+
+rf_fit_c = train(Purchase~.,
+                 data = train,
+                 method = "ranger",
+                 tuneGrid = rf.grid2,
+                 metric = "ROC",
+                 trControl = ctrl2,
+                 importance = "impurity")
+
+ggplot(rf_fit_c, highlight = TRUE)
+
+barplot(sort(ranger::importance(rf_fit_c$finalModel),
+             decreasing = FALSE),
+        las = 2, horiz = TRUE, cex.names = 0.7,
+        col = colorRampPalette(colors = c("darkred","white","darkblue"))(19))
+
+rf.pred = predict(rf_fit_c, newdata = test, type = "raw")
+1 - sum(rf.pred == test$Purchase) / length(test$Purchase)
+```
+
+Variables Importance:
+LoyalCH > StoreID > PriceDiff > WeekofPurchase > STORE > SalePriceMM > ListPriceDiff > SalePriceCH > PctDiscMM > Store7Yes > PriceMM > PctDiscCH > DiscCH > DiscMM > SpecialCH > PriceCH > SpecialMM
+
+The test classification error rate is 15.55556%.
