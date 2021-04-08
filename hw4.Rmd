@@ -5,74 +5,70 @@ date: "4/8/2021"
 output: html_document
 ---
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE,warning = F)
-library(lasso2)
 library(tidyverse)
+library(lasso2)
 library(rpart)
 library(rpart.plot)
 library(caret)
 library(ranger)
 library(gbm)
 library(ISLR)
-theme_set(theme_bw() + theme(legend.position = "bottom"))
 ```
 
 # Problem 1
 
-## a) Fit a regression tree
+## A. Regression tree
+
+```{r}
+data(Prostate)
+```
 
 ### The lowest cross-validation error 
 
 ```{r}
-data(Prostate)
+set.seed(1)
+
 ctrl = trainControl(method = "cv")
-```
 
-```{r, cache=TRUE}
-set.seed(2020)
-tree_fit = train(lpsa~., 
-            data = Prostate,
-            method = "rpart",
-            tuneGrid = data.frame(cp =exp(seq(-8,-2, length = 20))),
-            trControl = ctrl)
-ggplot(tree_fit, highlight = TRUE)
-```
+tree_fit_1 = train(lpsa~.,
+                   data = Prostate,
+                   method = "rpart",
+                   tuneGrid = data.frame(cp = exp(seq(-8,-2, length = 20))),
+                   trControl = trainControl(method = "cv"))
 
-```{r, cache=TRUE}
-tree_fit$bestTune
-tree_fit$finalModel$cptable
-rpart.plot(tree_fit$finalModel)
-```
+ggplot(tree_fit_1, highlight = TRUE)
 
-The tree size corresponds to the lowest cross-validation error is 8.
+tree_fit_1$bestTune
+tree_fit_1$finalModel$cptable
+rpart.plot(tree_fit_1$finalModel)
+```
 
 ### The 1 SE rule
 
-```{r, cache=TRUE}
-set.seed(2020) 
-tree_fit_2 = train(lpsa~., 
-            data = Prostate,
-            method = "rpart",
-            tuneGrid = data.frame(cp =exp(seq(-8,-2, length = 20))),
-            trControl = trainControl(method = "cv",
-                                     number = 10,
-                                     selectionFunction = "oneSE"))
-ggplot(tree_fit_2, highlight = TRUE)
-```
+```{r}
+set.seed(1) 
+tree_fit_2 = train(lpsa~.,
+                   data = Prostate,
+                   method = "rpart",
+                   tuneGrid = data.frame(cp = exp(seq(-8, -2, length = 20))),
+                   trControl = trainControl(method = "cv",
+                                            number = 10,
+                                            selectionFunction = "oneSE"))
 
-```{r, cache=TRUE}
+ggplot(tree_fit_2, highlight = TRUE)
+
 tree_fit_2$finalModel$cptable
 rpart.plot(tree_fit_2$finalModel)
 ```
 
-The tree size obtained using the 1 SE rule is 3.
+The regression trees from lowest CV and 1 SE rule are different.
 
-**The two tree sizes obtained by different selection functions are different.**
+The tree corresponding to the lowest cross-validation error has a size of 8, while the tree obtained with 1 SE rule has a size of 3
 
 ## b) Choose one decision tree model
 
-```{r, cache=TRUE}
-resamp = resamples(list(lowest_cv_error = tree_fit, 
+```{r}
+resamp = resamples(list(lowest_cv_error = tree_fit_1, 
                          one_se = tree_fit_2
                          ))
 bwplot(resamp, metric = "RMSE")
@@ -80,247 +76,57 @@ bwplot(resamp, metric = "RMSE")
 
 I choosed tree size 3 as it has a similar performance with size 8 and it is simpler.
 
-```{r, cache=TRUE}
+```{r}
 rpart.plot(tree_fit_2$finalModel)
 ```
 
-The first terminal node in the plot:
-When the lcavol is smaller than -0.48 (firstly smaller than 2.5), the predicted value (or the mean of observations in this terminal node) is 0.6. This terminal node contains 9% training data observations.
+The regression tree with size of 3 is chosen: 
+
+For the terminal node lcavol < 2.5, if log(cancer volumn) is smaller than 2.5, there is 78% of probability that log(prostate specific antigen) to be 2.1. If lcovol is not smaller than 2.5, there is 22% of probability that lpsa to be 3.8.
 
 ## c) Bagging
 
-```{r, cache=TRUE}
-set.seed(2020)
+```{r}
+set.seed(1)
 bagging.grid = expand.grid(mtry = 8,
-                       splitrule = "variance",
-                       min.node.size = 1:30
-                       )
+                           splitrule = "variance",
+                           min.node.size = 1:30)
 bag_fit = train(lpsa~.,
                 data = Prostate,
                 method = "ranger",
                 tuneGrid = bagging.grid,
                 importance = "impurity",
-                trControl = ctrl)
-ggplot(bag_fit, highlight = T)
-barplot(sort(ranger::importance(bag_fit$finalModel), 
-             decreasing = FALSE),
+                trControl = trainControl(method = "cv"))
+
+ggplot(bag_fit, highlight = TRUE)
+
+barplot(sort(ranger::importance(bag_fit$finalModel), decreasing = FALSE),
         las = 2, horiz = TRUE, cex.names = 0.7,
-        col = colorRampPalette(
-            colors =c("darkred","white","darkblue"))(19))
+        col = colorRampPalette(colors = c("darkred","white","darkblue"))(19))
 ```
 
-The lcavol is the most important variable in this bagging model.
-
-Importance:
+Variable Importance:
 lcavol > lweight > svi > pgg45  > lcp > age > lbph > gleason
 
 ## d) Random Forests
 
-```{r, cache=TRUE}
-set.seed(2020)
-rf.grid = expand.grid(mtry = 1:6,
-                       splitrule = "variance",
-                       min.node.size = 1:30
-                       )
+```{r}
+set.seed(1)
+rf.grid = expand.grid(mtry = 1:6, splitrule = "variance", min.node.size = 1:30)
+
 rf_fit = train(lpsa~.,
-                data = Prostate,
-                method = "ranger",
-                tuneGrid = rf.grid,
-                importance = "impurity",
-                trControl = ctrl)
-ggplot(rf_fit, highlight = T)
-barplot(sort(ranger::importance(rf_fit$finalModel), 
-             decreasing = FALSE),
+               data = Prostate,
+               method = "ranger",
+               tuneGrid = rf.grid,
+               importance = "impurity",
+               trControl = trainControl(method = "cv"))
+
+ggplot(rf_fit, highlight = TRUE)
+
+barplot(sort(ranger::importance(rf_fit$finalModel), decreasing = FALSE),
         las = 2, horiz = TRUE, cex.names = 0.7,
-        col = colorRampPalette(
-            colors = c("darkred","white","darkblue"))(19))
+        col = colorRampPalette(colors = c("darkred","white","darkblue"))(19))
 ```
 
-The lcavol is the most important variable in this random forests model.
-
-Importance:
+Variable Importance:
 lcavol  > lweight > svi > lcp > pgg45 > age > lbph > gleason
-
-## e) Boosting 
-
-```{r, cache=TRUE}
-set.seed(2020)
-gbm.grid = expand.grid(
-    n.trees = seq(1,5001, by = 500),
-    interaction.depth = 1:10,
-    shrinkage = c(0.001, 0.003, 0.005),
-    n.minobsinnode = 1
-    )
-gbm_fit = train(lpsa~.,
-                data = Prostate,
-                method = "gbm",
-                tuneGrid = gbm.grid,
-                trControl = ctrl,
-                verbose = FALSE)
-ggplot(gbm_fit, highlight = T)
-summary(gbm_fit$finalModel, las = 2, cBars = 19, cex.names = 0.6)
-```
-
-The lcavol is the most important variable in this boosting model.
-
-Importance:
-lcavol > lweight > svi > lcp > pgg45 > age > lbph > gleason
-
-## f) Compare Models
-
-```{r, cache=TRUE}
-resamp2 = resamples(list(tree_fit = tree_fit, 
-                         tree_fit_1SE = tree_fit_2,
-                         bagging = bag_fit,
-                         rondomforest = rf_fit,
-                         boosting = gbm_fit
-                         ))
-a = bwplot(resamp2, metric = "RMSE")
-b = ggplot(resamp2, metric = "RMSE") 
-gridExtra::grid.arrange(a,b,ncol = 2,nrow = 1)
-```
-
-From the boxplots of RMSE in the cross-vaildation, we can see that ensemble methods (bagging, random forerst and boosting) have a better performance in the cross-vaildation than the simple decision tree model. Comparing means of RMSE of different models in the cross-vaildation, we choose the boosting model to predict PSA level as it has the lowest mean.
-
-## Homework 4 problem 2 Description
-This problem involves the OJ data in the ISLR package. The data contains 1070 purchases
-where the customers either purchased Citrus Hill or Minute Maid Orange Juice. A number
-of characteristics of customers and products are recorded. Create a training set containing
-a random sample of 800 observations, and a test set containing the remaining observations.
-Use set.seed() for reproducible results.
-
-## Problem 2
-
-## a) Decision Tree
-
-```{r}
-data(OJ)
-set.seed(2020)
-train_ind = sample(seq_len(nrow(OJ)), size = 800)
-training = OJ[train_ind, ]
-test = OJ[-train_ind, ]
-```
-
-```{r}
-set.seed(2020)
-ctrl2 = trainControl(method = "repeatedcv",
-                    summaryFunction = twoClassSummary,
-                    classProbs = TRUE)
-tree_fit_c = train(Purchase~.,
-                 data = training,
-                 method = "rpart",
-                 tuneGrid = data.frame(cp = exp(seq(-15,0, by = 2))),
-                 trControl = ctrl2,
-                 metric = "ROC"
-                 )
-plot(tree_fit_c, xTrans = function(x)log(x), xlab = "log(cp)")
-ggplot(tree_fit_c, highlight = T)
-```
-
-```{r}
-tree_fit_c$bestTune
-tree_fit_c$finalModel$cptable
-```
-
-### The plot of the final tree
-
-```{r}
-rpart.plot(tree_fit_c$finalModel)
-```
-
-### Predict the response on the test data
-
-```{r}
-tree.pred = predict(tree_fit_c, newdata = test, type = "raw")
-1 - sum(tree.pred == test$Purchase) / length(test$Purchase)
-```
-
-### Test classification error rate
-
-The tree size is 16. The test classification error rate is 22.22% for this tree model.
-
-## b)Random forests
-
-```{r, cache=TRUE}
-set.seed(2020)
-rf.grid2 = expand.grid(mtry = 2:7,
-                      splitrule = "gini",
-                      min.node.size = seq(20,120, by = 10))
-rf_fit_c = train(Purchase~.,
-                 data = training,
-                 method = "ranger",
-                 tuneGrid = rf.grid2,
-                 metric = "ROC",
-                 trControl = ctrl2,
-                 importance = "impurity")
-ggplot(rf_fit_c, highlight = T)
-```
-
-### Report variable importance
-
-```{r, cache=TRUE}
-barplot(sort(ranger::importance(rf_fit_c$finalModel), 
-             decreasing = FALSE),
-        las = 2, horiz = TRUE, cex.names = 0.7,
-        col = colorRampPalette(
-            colors = c("darkred","white","darkblue"))(19))
-```
-
-The loyalCH is the most important variable in this random forest model.
-
-The top 5 most important variables:
-LoyalCH > StoreID > PriceDiff > WeekofPurchase > SalePriceMM 
-
-### Predict the response on the test data
-
-```{r, cache=TRUE}
-rf.pred = predict(rf_fit_c, newdata = test, type = "raw")
-1 - sum(rf.pred == test$Purchase) / length(test$Purchase)
-```
-
-### Test classification error rate
-
-The test classification error rate is 18.89% for this random forest model.
-
-## c) Boosting
-
-```{r, cache=TRUE}
-set.seed(2020)
-gbm.grid2 = expand.grid(n.trees = seq(100, 600, by = 10),
-                       interaction.depth = 2:6,
-                       shrinkage = c(0.001, 0.003, 0.005),
-                       n.minobsinnode = 1)
-gbm_fit_c = train(Purchase~.,
-                data = training,
-                method = "gbm",
-                trControl = ctrl2,
-                distribution = "bernoulli",
-                metric = "ROC",
-                tuneGrid = gbm.grid2,
-                verbose = F
-                )
-ggplot(gbm_fit_c, highlight = T)
-```
-
-### Report variable importance
-
-```{r, cache=TRUE}
-summary(gbm_fit_c$finalModel, las = 2, cBars = 19, cex.names = 0.6)
-```
-
-The loyalCH is the most important variable in this boosting model. 
-
-The top 5 most important variables: 
-LoyalCH > PriceDiff > WeekofPurchase > SalePriceMM > ListPriceDiff
-
-### Predict the response on the test data
-
-```{r, cache=TRUE}
-gbm.pred = predict(gbm_fit_c, newdata = test, type = "raw")
-1 - sum(gbm.pred == test$Purchase) / length(test$Purchase)
-```
-
-### Test classification error rate
-
-The test classification error rate is 18.52% for this boosting model.
-
