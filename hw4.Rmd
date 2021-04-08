@@ -130,3 +130,45 @@ barplot(sort(ranger::importance(rf_fit$finalModel), decreasing = FALSE),
 
 Variable Importance:
 lcavol  > lweight > svi > lcp > pgg45 > age > lbph > gleason
+
+## e) Boosting 
+
+```{r}
+set.seed(1)
+
+gbm.grid = expand.grid(n.trees = seq(1,5001, by = 500),
+                       interaction.depth = 1:10,
+                       shrinkage = c(0.001, 0.003, 0.005),
+                       n.minobsinnode = 1)
+
+gbm_fit = train(lpsa~.,
+                data = Prostate,
+                method = "gbm",
+                tuneGrid = gbm.grid,
+                trControl = trainControl(method = "cv"),
+                verbose = FALSE)
+
+ggplot(gbm_fit, highlight = TRUE)
+
+summary(gbm_fit$finalModel, las = 2, cBars = 19, cex.names = 0.6)
+```
+
+
+Variable Importance:
+lcavol > lweight > svi > lcp > pgg45 > age > lbph > gleason
+
+## f) Compare Models
+
+```{r}
+resamp_2 = resamples(list(tree_fit = tree_fit_1, 
+                          tree_fit_1SE = tree_fit_2,
+                          bagging = bag_fit,
+                          randomforest = rf_fit,
+                          boosting = gbm_fit))
+
+summary(resamp_2)
+bwplot(resamp_2, metric = "RMSE")
+ggplot(resamp_2, metric = "RMSE")
+```
+
+Boosting, random forests and bagging have similar RMSE mean and median. However, random forests has the largest mean R-squared value. Therefore, random forests is chosen to predict PSA level.
