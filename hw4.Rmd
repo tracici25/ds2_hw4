@@ -231,3 +231,38 @@ Variables Importance:
 LoyalCH > StoreID > PriceDiff > WeekofPurchase > STORE > SalePriceMM > ListPriceDiff > SalePriceCH > PctDiscMM > Store7Yes > PriceMM > PctDiscCH > DiscCH > DiscMM > SpecialCH > PriceCH > SpecialMM
 
 The test classification error rate is 15.55556%.
+
+
+## C. Boosting
+
+```{r}
+set.seed(1)
+
+gbm.grid2 = expand.grid(n.trees = seq(100, 600, by = 10),
+                        interaction.depth = 2:6,
+                        shrinkage = c(0.001, 0.003, 0.005),
+                        n.minobsinnode = 1)
+
+gbm_fit_c = train(Purchase~.,
+                  data = train,
+                  method = "gbm",
+                  trControl = ctrl2,
+                  distribution = "bernoulli",
+                  metric = "ROC",
+                  tuneGrid = gbm.grid2,
+                  verbose = FALSE)
+
+ggplot(gbm_fit_c, highlight = TRUE)
+
+summary(gbm_fit_c$finalModel, las = 2, cBars = 19, cex.names = 0.6)
+
+gbm.pred = predict(gbm_fit_c, newdata = test, type = "raw")
+1 - sum(gbm.pred == test$Purchase) / length(test$Purchase)
+```
+
+
+Variable Importance:
+LoyalCH > PriceDiff > StoreID > SalePriceMM > ListPriceDiff > STORE > WeekofPurchase > Store7Yes > SpecialCH > DiscCH > SalePriceCH > SpecialMM > PriceMM > PctDiscCH > DiscMM > PriceCH > PctDiscMM
+
+The test classification error rate is 14.81481%.
+
